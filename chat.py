@@ -2,7 +2,6 @@
 
 import re
 from aiohttp import web
-# TODO
 
 
 class WSChat:
@@ -10,12 +9,12 @@ class WSChat:
         self.host = host
         self.port = port
         self.conns = {}
-        self.clients = []
+        self.commands = {'INIT': self.init,
+                         'TEXT': self.text}
+        self.dels = []
 
     async def main_page(self, request):
         return web.FileResponse('./index.html')
-
-    # TODO
 
     def run(self):
         app = web.Application()
@@ -26,61 +25,59 @@ class WSChat:
     async def get(self, request):
         ws = web.WebSocketResponse()
         await ws.prepare(request)
-        print(request)
 
         async for msg in ws:
-            print(msg)
-            print(msg[1], type(msg[1]))
+            await self.cleanup()
+
+            if msg[1] != 'ping':
+                print(msg)
+                print(msg[1], type(msg[1]))
+
             if msg[1] == 'ping':
                 await ws.send_str('pong')
             else:
-                await self.parse(msg[1])
-                # user enter the chat
-                print('WE ARE HEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEERE')
-                self.clients.append(msg[1][1])
-                print(self.clients)
-                await ws.send_json(f"'mtype': 'USER_ENTER', 'id': '{id}'")
-                await self.send_all(ws, msg[1][1], 'service')
-                # TODO: рассылка всем
+                type_ = re.findall(r'"mtype":"(.+?)"', msg[1])[0]
+                print(type_)
+                await self.commands[type_](ws, msg[1])
 
-    async def send_all(self, ws, id, type, msg=''):
-        for client in self.clients:
-            if id != client:
-                if type == 'service':
-                    ws.send_json(f"'mtype': 'USER_ENTER', 'id': '{id}'")
-                elif type == 'msg_all':
-                    ws.send_json(f"'mtype': 'MSG', 'id': '{id}', 'text': '{msg}'")
+    async def send_all(self, id, type, msg='', receiver=''):
+        for client, ws in self.conns.items():
+            try:
+                if id != client:
+                    if type == 'user_in':
+                        await ws.send_json({'mtype': 'USER_ENTER', 'id': id})
 
-    async def parse(self, msg):
-        type_ = re.findall(r'"mtype":"(.+?)"', msg)
-        print(type_)
+                    elif type == 'user_out':
+                        await ws.send_json({'mtype': 'USER_LEAVE', 'id': id})
 
+                    elif type == 'msg_all':
+                        await ws.send_json({'mtype': 'MSG', 'id': id,
+                                            'text': msg})
 
+                    elif type == 'msg_to':
+                        await ws.send_json({'mtype': 'DM', 'id': id,
+                                            'text': msg})
+            except ConnectionResetError:
+                # delete inactive
+                self.dels.append(client)
 
+    async def init(self, ws, msg):
+        client = re.findall(r'"id":"(.+?)"', msg)[0]
+        self.conns[client] = ws
+        print(self.conns)
+        await self.send_all(client, 'user_in')
 
+    async def text(self, ws, msg):
+        client = re.findall(r'"id":"(.+?)"', msg)[0]
+        receiver = re.findall(r'"to":(.+?),', msg)[0]
+        text = re.findall(r'"text":"(.+?)"}', msg)[0]
 
-
-
-            # if msg.tp == MsgType.text:
-            #     if msg.data == 'close':
-            #         await ws.close()
-
-        # async for msg in ws:
-        #     if msg.tp == MsgType.text:
-        #         if msg.data == 'close':
-        #             await ws.close()
-        #         else:
-        #
-        #             for _ws in self.request.app['websockets']:
-        #                 _ws.send_str('(%s) %s' % (msg.data))
-        #     elif msg.tp == MsgType.error:
-        #         log.debug(
-        #             'ws connection closed with exception %s' % ws.exception())
-        #
-        # self.request.app['websockets'].remove(ws)
-        # for _ws in self.request.app['websockets']:
-        #     _ws.send_str('%s disconected' % login)
-        # log.debug('websocket connection closed')
+    async def cleanup(self):
+        # unsafe??? idk
+        for i in self.dels:
+            await self.send_all(i, 'user_out')
+            del self.conns[i]
+        self.dels = []
 
 
 if __name__ == '__main__':
