@@ -11,7 +11,10 @@ class WSChat:
         self.conns = {}
         self.commands = {'INIT': self.init,
                          'TEXT': self.text}
-        self.dels = []
+        self.type_ = re.compile(r'"mtype":"(.+?)"')
+        self.client = re.compile(r'"id":"(.+?)"')
+        self.receiver = re.compile(r'"to":"?(.+?)"?,')
+        self.message = re.compile(r'"text":"(.+?)"}')
 
     async def main_page(self, request):
         return web.FileResponse('./index.html')
@@ -27,14 +30,10 @@ class WSChat:
         await ws.prepare(request)
 
         async for msg in ws:
-            if msg[1] != 'ping':
-                print(msg)
-                print(msg[1], type(msg[1]))
-
             if msg[1] == 'ping':
                 await ws.send_str('pong')
             else:
-                type_ = re.findall(r'"mtype":"(.+?)"', msg[1])[0]
+                type_ = self.type_.findall(msg[1])[0]
                 await self.commands[type_](ws, msg[1])
 
         await self.send_all(self.conns[ws], 'user_out')
@@ -43,7 +42,6 @@ class WSChat:
     async def send_all(self, id, type_, msg='', receiver=''):
         for ws, client in self.conns.items():
             if id != client:
-                print(client, type(client), receiver, type(receiver))
                 if type_ == 'user_in':
                     await ws.send_json({'mtype': 'USER_ENTER', 'id': id})
 
@@ -59,14 +57,14 @@ class WSChat:
                                         'text': msg})
 
     async def init(self, ws, msg):
-        client = re.findall(r'"id":"(.+?)"', msg)[0]
+        client = self.client.findall(msg)[0]
         self.conns[ws] = client
         await self.send_all(client, 'user_in')
 
     async def text(self, ws, msg):
-        client = re.findall(r'"id":"(.+?)"', msg)[0]
-        receiver = re.findall(r'"to":"?(.+?)"?,', msg)[0]
-        text = re.findall(r'"text":"(.+?)"}', msg)[0]
+        client = self.client.findall(msg)[0]
+        receiver = self.receiver.findall(msg)[0]
+        text = self.message.findall(msg)[0]
         if receiver == 'null':
             await self.send_all(client, 'msg_all', text)
         else:
