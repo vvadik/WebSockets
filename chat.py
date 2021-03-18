@@ -19,10 +19,14 @@ class WSChat:
     async def main_page(self, request):
         return web.FileResponse('./index.html')
 
+    async def get_js(self, request):
+        return web.FileResponse('./chat.js')
+
     def run(self):
         app = web.Application()
         app.router.add_get('/', self.main_page)
         app.router.add_get('/chat', self.get)
+        app.router.add_get('/chat.js', self.get_js)
         web.run_app(app, host=self.host, port=self.port)
 
     async def get(self, request):
