@@ -36,10 +36,10 @@ class WSChat:
                 type_ = self.type_.findall(msg[1])[0]
                 await self.commands[type_](ws, msg[1])
 
-        await self.send_all(self.conns[ws], 'user_out')
+        await self.send(self.conns[ws], 'user_out')
         del self.conns[ws]
 
-    async def send_all(self, id, type_, msg='', receiver=''):
+    async def send(self, id, type_, msg='', receiver=''):
         for ws, client in self.conns.items():
             if id != client:
                 if type_ == 'user_in':
@@ -59,16 +59,16 @@ class WSChat:
     async def init(self, ws, msg):
         client = self.client.findall(msg)[0]
         self.conns[ws] = client
-        await self.send_all(client, 'user_in')
+        await self.send(client, 'user_in')
 
     async def text(self, ws, msg):
         client = self.client.findall(msg)[0]
         receiver = self.receiver.findall(msg)[0]
         text = self.message.findall(msg)[0]
         if receiver == 'null':
-            await self.send_all(client, 'msg_all', text)
+            await self.send(client, 'msg_all', text)
         else:
-            await self.send_all(client, 'msg_to', text, receiver)
+            await self.send(client, 'msg_to', text, receiver)
 
 
 if __name__ == '__main__':
